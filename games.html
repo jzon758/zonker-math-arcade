@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Games | Zonker Math Arcade</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Zonker Math Arcade</div>
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="games.html">Games</a>
+      <a href="about.html">About</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap">
+    <header class="page-intro">
+      <h1>Games</h1>
+      <p>Choose a game, set your options, and start playing.</p>
+    </header>
+
+    <section id="menuScreen" class="card">
+      <h2>Choose a Game</h2>
+
+      <div class="game-grid">
+        <button class="game-card selected" data-game="math-facts">
+          <span class="game-title">Zonker Math Facts</span>
+          <span class="game-desc">Solve classic fact problems as fast as you can.</span>
+        </button>
+
+        <button class="game-card" data-game="target-ten">
+          <span class="game-title">Target Ten</span>
+          <span class="game-desc">Pick the equation that equals the target number.</span>
+        </button>
+      </div>
+
+      <div class="settings-grid">
+        <div>
+          <label for="operationSelect">Operation</label>
+          <select id="operationSelect">
+            <option value="addition">Addition</option>
+            <option value="subtraction">Subtraction</option>
+            <option value="multiplication">Multiplication</option>
+            <option value="division">Division</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="maxNumberSelect">Max Number</label>
+          <select id="maxNumberSelect"></select>
+        </div>
+
+        <div>
+          <label for="timerSelect">Timer</label>
+          <select id="timerSelect">
+            <option value="0">No Timer</option>
+            <option value="30">30 Seconds</option>
+            <option value="60" selected>60 Seconds</option>
+            <option value="90">90 Seconds</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="soundToggle">Sound</label>
+          <select id="soundToggle">
+            <option value="on" selected>On</option>
+            <option value="off">Off</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="startButton" class="primary-button">Start Game</button>
+    </section>
+
+    <section id="factsScreen" class="card hidden">
+      <div class="hud">
+        <div class="hud-box"><span>Mode</span><strong id="modeLabel">Addition to 12</strong></div>
+        <div class="hud-box"><span>Score</span><strong id="scoreLabel">0</strong></div>
+        <div class="hud-box"><span>Streak</span><strong id="streakLabel">0</strong></div>
+        <div class="hud-box"><span>Stars</span><strong id="starsLabel">☆☆☆</strong></div>
+        <div class="hud-box"><span>Time</span><strong id="timeLabel">60</strong></div>
+      </div>
+
+      <div class="question-panel">
+        <div id="question" class="question">4 + 5 = ?</div>
+        <input type="number" id="answerInput" placeholder="Type your answer" autocomplete="off" />
+        <button id="submitButton" class="primary-button">Submit</button>
+        <p id="feedback" class="feedback"></p>
+      </div>
+
+      <div class="bottom-actions">
+        <button id="backFromFactsButton" class="secondary-button">Back to Menu</button>
+      </div>
+    </section>
+
+    <section id="targetScreen" class="card hidden">
+      <div class="hud">
+        <div class="hud-box"><span>Game</span><strong>Target Ten</strong></div>
+        <div class="hud-box"><span>Target</span><strong id="targetValueLabel">10</strong></div>
+        <div class="hud-box"><span>Score</span><strong id="targetScoreLabel">0</strong></div>
+        <div class="hud-box"><span>Streak</span><strong id="targetStreakLabel">0</strong></div>
+        <div class="hud-box"><span>Time</span><strong id="targetTimeLabel">60</strong></div>
+      </div>
+
+      <div class="question-panel">
+        <p class="target-text">Pick the equation that equals the target number.</p>
+        <div id="targetNumber" class="target-number">10</div>
+
+        <div class="choice-grid">
+          <button class="choice-button" id="choice0"></button>
+          <button class="choice-button" id="choice1"></button>
+          <button class="choice-button" id="choice2"></button>
+          <button class="choice-button" id="choice3"></button>
+        </div>
+
+        <p id="targetFeedback" class="feedback"></p>
+      </div>
+
+      <div class="bottom-actions">
+        <button id="backFromTargetButton" class="secondary-button">Back to Menu</button>
+      </div>
+    </section>
+
+    <section id="gameOverScreen" class="card hidden">
+      <h2>Nice Work!</h2>
+      <p id="gameOverMessage">You finished with a score of 0.</p>
+      <div class="bottom-actions">
+        <button id="playAgainButton" class="primary-button">Play Again</button>
+        <button id="gameOverMenuButton" class="secondary-button">Back to Menu</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
