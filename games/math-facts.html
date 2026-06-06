@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zonker Math Facts</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Zonker Math Arcade</div>
+    <nav class="nav">
+      <a href="../index.html">Home</a>
+      <a href="../about.html">About</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap narrow-page">
+
+    <!-- MENU SCREEN -->
+    <section id="menuScreen" class="card">
+      <h1>Zonker Math Facts</h1>
+      <p class="page-subtext">Choose a mode and start practicing.</p>
+
+      <div class="mode-grid">
+        <button class="mode-card selected" data-mode="classic" type="button">
+          <span class="game-title">Classic Facts</span>
+          <span class="game-desc">Type the answer to each math fact.</span>
+        </button>
+
+        <button class="mode-card" data-mode="target-ten" type="button">
+          <span class="game-title">Target Ten</span>
+          <span class="game-desc">Choose the equation that matches the target.</span>
+        </button>
+      </div>
+
+      <div class="menu-actions">
+        <button id="toggleSettings" class="secondary-button" type="button">
+          Game Settings
+        </button>
+
+        <div id="settingsPanel" class="settings-grid hidden">
+          <div>
+            <label for="operationSelect">Operation</label>
+            <select id="operationSelect">
+              <option value="addition">Addition</option>
+              <option value="subtraction">Subtraction</option>
+              <option value="multiplication">Multiplication</option>
+              <option value="division">Division</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="maxNumberSelect">Max Number</label>
+            <select id="maxNumberSelect"></select>
+          </div>
+
+          <div>
+            <label for="timerSelect">Timer</label>
+            <select id="timerSelect">
+              <option value="0">No Timer</option>
+              <option value="30">30 Seconds</option>
+              <option value="60" selected>60 Seconds</option>
+              <option value="90">90 Seconds</option>
+            </select>
+          </div>
+
+          <fieldset class="focus-facts-field">
+            <legend>Focus Facts</legend>
+            <div id="focusFactsGrid" class="focus-facts-grid" aria-label="Choose focus facts"></div>
+          </fieldset>
+        </div>
+
+        <button id="startButton" class="primary-button" type="button">
+          Start Game
+        </button>
+      </div>
+    </section>
+
+    <!-- GAME SCREEN -->
+    <section id="gameScreen" class="card hidden">
+      <div class="game-topbar">
+        <div class="pill"><span>Mode</span><strong id="modeLabel">Classic Facts</strong></div>
+        <div class="pill"><span>Score</span><strong id="scoreLabel">0</strong></div>
+        <div class="pill"><span>Streak</span><strong id="streakLabel">0</strong></div>
+        <div class="pill"><span>Time</span><strong id="timeLabel">60</strong></div>
+      </div>
+
+      <!-- CLASSIC MODE -->
+      <div id="classicArea">
+        <div id="question" class="question">4 + 5 = ?</div>
+        <input type="number" id="answerInput" placeholder="Type your answer" autocomplete="off" />
+        <button id="submitButton" class="primary-button">Submit</button>
+        <p id="feedback" class="feedback"></p>
+      </div>
+
+      <!-- TARGET TEN MODE -->
+      <div id="targetArea" class="hidden">
+        <p class="target-text">Pick the equation that matches the target.</p>
+        <div id="targetNumber" class="target-number">10</div>
+
+        <div class="choice-grid">
+          <button class="choice-button" id="choice0"></button>
+          <button class="choice-button" id="choice1"></button>
+          <button class="choice-button" id="choice2"></button>
+          <button class="choice-button" id="choice3"></button>
+        </div>
+
+        <p id="targetFeedback" class="feedback"></p>
+      </div>
+
+      <div class="bottom-actions">
+        <button id="backButton" class="secondary-button" type="button">
+          Back to Menu
+        </button>
+      </div>
+    </section>
+
+    <!-- GAME OVER -->
+    <section id="gameOverScreen" class="card hidden">
+      <h2>Nice Work!</h2>
+      <p id="gameOverMessage">You finished with a score of 0.</p>
+
+      <div class="bottom-actions">
+        <button id="playAgainButton" class="primary-button" type="button">
+          Play Again
+        </button>
+        <button id="gameOverMenuButton" class="secondary-button" type="button">
+          Back to Menu
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="../scripts/math-facts.js"></script>
+</body>
+</html>
