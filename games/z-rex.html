@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Z-Rex: Integer Practice</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Zonker Math Arcade</div>
+    <nav class="nav">
+      <a href="../index.html">Home</a>
+      <a href="../about.html">About</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap zrex-page">
+    <section class="zrex-shell">
+      <div class="zrex-topbar">
+        <div>
+          <h1>Z-Rex: Integer Practice</h1>
+          <p id="zrexStatus" class="page-subtext">Jump into the correct integer answer.</p>
+        </div>
+
+        <div class="zrex-hud">
+          <div class="pill"><span>Score</span><strong id="zrexScore">0</strong></div>
+        </div>
+      </div>
+
+      <div class="zrex-problem-card">
+        <span>Integer Mission</span>
+        <strong id="zrexProblem">Press Start</strong>
+      </div>
+
+      <div class="zrex-stage-wrap">
+        <canvas id="zrexCanvas" width="960" height="520" aria-label="Z-Rex integer runner game"></canvas>
+      </div>
+
+      <div class="zrex-controls">
+        <button id="zrexStartButton" class="primary-button" type="button">Start Game</button>
+        <button id="zrexJumpButton" class="secondary-button" type="button">Jump</button>
+        <button id="zrexDuckButton" class="secondary-button" type="button">Duck</button>
+        <button id="zrexResetButton" class="secondary-button" type="button">Reset</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="../scripts/z-rex.js?v=5"></script>
+</body>
+</html>
