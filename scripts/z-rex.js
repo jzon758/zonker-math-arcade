@@ -2,6 +2,7 @@ const canvas = document.getElementById("zrexCanvas");
 const ctx = canvas.getContext("2d");
 
 const scoreEl = document.getElementById("zrexScore");
+const highScoreEl = document.getElementById("zrexHighScore");
 const problemEl = document.getElementById("zrexProblem");
 const statusEl = document.getElementById("zrexStatus");
 const startButton = document.getElementById("zrexStartButton");
@@ -10,7 +11,10 @@ const duckButton = document.getElementById("zrexDuckButton");
 const resetButton = document.getElementById("zrexResetButton");
 
 const groundY = 416;
-const baseSpeed = 1.35;
+const baseSpeed = 2.25;
+const highScoreKey = "zrexHighScore";
+const answerTokenMinY = 172;
+const answerTokenMaxY = 374;
 
 const zrex = {
   x: 116,
@@ -27,6 +31,7 @@ const zrex = {
 const game = {
   running: false,
   score: 0,
+  highScore: loadHighScore(),
   runCorrect: 0,
   level: 1,
   speed: baseSpeed,
@@ -40,6 +45,7 @@ const game = {
   nextTokenAt: 0,
   nextDinoAt: 0,
   lastTime: 0,
+  gameOver: false,
   message: "Press Start to help Z-Rex hunt integers.",
   messageUntil: 0
 };
@@ -124,6 +130,30 @@ function makeChoices(answer, misconception) {
   return shuffle(choices);
 }
 
+function loadHighScore() {
+  try {
+    const storedScore = Number(localStorage.getItem(highScoreKey));
+    return Number.isFinite(storedScore) ? storedScore : 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+function saveHighScore() {
+  try {
+    localStorage.setItem(highScoreKey, String(game.highScore));
+  } catch (error) {
+    // High score is optional; gameplay should continue if storage is unavailable.
+  }
+}
+
+function updateHighScore() {
+  if (game.score <= game.highScore) return;
+
+  game.highScore = game.score;
+  saveHighScore();
+}
+
 function startGame() {
   game.running = true;
   game.score = 0;
@@ -136,6 +166,7 @@ function startGame() {
   game.badDinos = [];
   game.nextTokenAt = performance.now() + 1500;
   game.nextDinoAt = performance.now() + 3600;
+  game.gameOver = false;
   game.message = "Go, Z-Rex!";
   game.messageUntil = performance.now() + 1400;
   zrex.y = groundY;
@@ -159,6 +190,7 @@ function resetGame() {
   game.badDinos = [];
   game.nextTokenAt = 0;
   game.currentProblem = null;
+  game.gameOver = false;
   game.message = "Press Start to help Z-Rex hunt integers.";
   game.messageUntil = 0;
   zrex.y = groundY;
@@ -170,9 +202,11 @@ function resetGame() {
   updateHud();
 }
 
-function restartRunAfterMiss(message) {
-  const now = performance.now();
+function endRunAfterFailure(message) {
+  updateHighScore();
 
+  game.running = false;
+  game.score = 0;
   game.runCorrect = 0;
   game.level = 1;
   game.speed = baseSpeed;
@@ -180,16 +214,18 @@ function restartRunAfterMiss(message) {
   game.pendingChoices = [];
   game.answerTokens = [];
   game.badDinos = [];
-  game.nextTokenAt = now + 1500;
-  game.nextDinoAt = now + 3600;
-  game.message = message;
-  game.messageUntil = now + 1800;
+  game.nextTokenAt = 0;
+  game.nextDinoAt = 0;
+  game.currentProblem = null;
+  game.gameOver = true;
+  game.message = "Game over — press Start to try again.";
+  game.messageUntil = 0;
   zrex.y = groundY;
   zrex.velocityY = 0;
   zrex.isJumping = false;
   zrex.isDucking = false;
-  zrex.stunUntil = now + 500;
-  setNextProblem();
+  zrex.stunUntil = 0;
+  problemEl.textContent = game.message;
   updateHud();
 }
 
@@ -228,25 +264,22 @@ function spawnAnswerToken(now) {
     (token) => !token.hit && !token.stale && token.problemId === game.currentProblemId && token.x > -80
   );
 
-  if (activeCurrentTokens.length >= 2 || game.pendingChoices.length === 0) return;
+  if (activeCurrentTokens.length >= 1 || game.pendingChoices.length === 0) return;
 
   const nextChoice = game.pendingChoices.shift();
-  const lanes = shuffle(["low", "high"]);
-  const lane = lanes[0];
-  const y = lane === "low" ? 374 : 318;
+  const y = randomInt(answerTokenMinY, answerTokenMaxY);
 
   game.answerTokens.push({
     x: canvas.width + 130,
     y,
     radius: 28,
-    lane,
     value: nextChoice.value,
     correct: nextChoice.correct,
     problemId: game.currentProblemId,
     hit: false
   });
 
-  game.nextTokenAt = now + Math.max(1400, 2200 - game.level * 80);
+  game.nextTokenAt = now + Math.max(1700, 2800 - game.level * 90);
 }
 
 function spawnBadDino(now) {
@@ -283,6 +316,7 @@ function isStunned() {
 
 function updateHud() {
   scoreEl.textContent = game.score;
+  highScoreEl.textContent = game.highScore;
   statusEl.textContent = game.message;
 }
 
@@ -328,7 +362,7 @@ function updateGame(delta, now) {
   );
 
   if (game.currentProblem && game.pendingChoices.length === 0 && !hasCurrentToken) {
-    restartRunAfterMiss("Missed it. Pace resets, total points stay.");
+    endRunAfterFailure("Missed it.");
     return;
   }
 
@@ -362,8 +396,9 @@ function checkAnswerCollisions() {
     if (token.correct && !token.stale && token.problemId === game.currentProblemId) {
       game.score++;
       game.runCorrect++;
-      game.level = Math.floor(game.runCorrect / 3) + 1;
-      game.speed = clamp(baseSpeed + game.runCorrect * 0.16, baseSpeed, 5.2);
+      updateHighScore();
+      game.level = Math.floor(game.score / 5) + 1;
+      game.speed = clamp(baseSpeed + Math.floor(game.score / 5) * 0.28, baseSpeed, 5.2);
       game.message = "Correct. Integer rules mastered!";
       game.messageUntil = performance.now() + 1150;
       setNextProblem();
@@ -371,7 +406,7 @@ function checkAnswerCollisions() {
       const missMessage = token.stale
         ? `${formatInteger(token.value)} was from the last mission. Stay with the new problem.`
         : `${formatInteger(token.value)} is a trap answer. Try the sign rule again.`;
-      restartRunAfterMiss(missMessage);
+      endRunAfterFailure(missMessage);
     }
   });
 }
@@ -644,7 +679,11 @@ function drawDuckingZrex(baseX, baseY, bodyColor, bellyColor) {
 }
 
 function drawProblemBanner() {
-  const text = game.currentProblem ? `${game.currentProblem.text} = ?` : "Press Start";
+  const text = game.gameOver
+    ? "Game over"
+    : game.currentProblem
+      ? `${game.currentProblem.text} = ?`
+      : "Press Start";
 
   ctx.fillStyle = "rgba(31, 42, 68, 0.9)";
   ctx.fillRect(250, 22, 460, 66);
