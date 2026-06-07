@@ -15,6 +15,8 @@ const baseSpeed = 2.25;
 const highScoreKey = "zrexHighScore";
 const answerTokenMinY = 172;
 const answerTokenMaxY = 374;
+const flyingDinoMinY = 145;
+const flyingDinoMaxY = 375;
 
 const zrex = {
   x: 116,
@@ -42,8 +44,10 @@ const game = {
   pendingChoices: [],
   answerTokens: [],
   badDinos: [],
+  flyingDinos: [],
   nextTokenAt: 0,
   nextDinoAt: 0,
+  nextFlyingDinoAt: 0,
   lastTime: 0,
   gameOver: false,
   backgroundFreezeTime: 0,
@@ -165,8 +169,10 @@ function startGame() {
   game.pendingChoices = [];
   game.answerTokens = [];
   game.badDinos = [];
+  game.flyingDinos = [];
   game.nextTokenAt = performance.now() + 1500;
   game.nextDinoAt = performance.now() + 3600;
+  game.nextFlyingDinoAt = performance.now() + 5600;
   game.gameOver = false;
   game.backgroundFreezeTime = 0;
   game.message = "Go, Z-Rex!";
@@ -190,7 +196,9 @@ function resetGame() {
   game.pendingChoices = [];
   game.answerTokens = [];
   game.badDinos = [];
+  game.flyingDinos = [];
   game.nextTokenAt = 0;
+  game.nextFlyingDinoAt = 0;
   game.currentProblem = null;
   game.gameOver = false;
   game.backgroundFreezeTime = 0;
@@ -216,8 +224,10 @@ function endRunAfterFailure(message) {
   game.pendingChoices = [];
   game.answerTokens = [];
   game.badDinos = [];
+  game.flyingDinos = [];
   game.nextTokenAt = 0;
   game.nextDinoAt = 0;
+  game.nextFlyingDinoAt = 0;
   game.currentProblem = null;
   game.gameOver = true;
   game.backgroundFreezeTime = performance.now();
@@ -291,9 +301,32 @@ function spawnBadDino(now) {
     y: groundY + 8,
     width: 58,
     height: 45,
+    speedMultiplier: randomObstacleSpeed(0.85, 1.16),
     wobble: Math.random() * Math.PI * 2
   });
-  game.nextDinoAt = now + Math.max(1700, 3900 - game.level * 160);
+  game.nextDinoAt = now + randomObstacleDelay(4200, 7800, 120);
+}
+
+function spawnFlyingDino(now) {
+  game.flyingDinos.push({
+    x: canvas.width + 140,
+    y: randomInt(flyingDinoMinY, flyingDinoMaxY),
+    width: 110,
+    height: 42,
+    speedMultiplier: randomObstacleSpeed(0.82, 1.12),
+    flap: Math.random() * Math.PI * 2
+  });
+  game.nextFlyingDinoAt = now + randomObstacleDelay(5200, 9000, 170);
+}
+
+function randomObstacleSpeed(min, max) {
+  const progressBoost = Math.min(0.28, Math.floor(game.score / 5) * 0.04);
+  return min + Math.random() * (max + progressBoost - min);
+}
+
+function randomObstacleDelay(min, max, levelStep) {
+  const adjustedMax = Math.max(min + 900, max - game.level * levelStep);
+  return randomInt(min, adjustedMax);
 }
 
 function jump() {
@@ -328,6 +361,7 @@ function updateGame(delta, now) {
 
   const speed = game.speed;
   const groundObstacleSpeed = isStunned() ? speed * 0.35 : speed;
+  const previousZrexY = zrex.y;
 
   zrex.velocityY += game.gravity;
   zrex.y += zrex.velocityY;
@@ -344,12 +378,21 @@ function updateGame(delta, now) {
   });
 
   game.badDinos.forEach((dino) => {
-    dino.x -= groundObstacleSpeed * 1.06;
+    dino.x -= groundObstacleSpeed * dino.speedMultiplier;
     dino.wobble += delta * 0.01;
+  });
+
+  game.flyingDinos.forEach((dino) => {
+    dino.x -= speed * dino.speedMultiplier;
+    dino.flap += delta * 0.018;
   });
 
   if (now >= game.nextDinoAt && game.score >= 2) {
     spawnBadDino(now);
+  }
+
+  if (now >= game.nextFlyingDinoAt && game.score >= 3) {
+    spawnFlyingDino(now);
   }
 
   if (now >= game.nextTokenAt) {
@@ -358,6 +401,7 @@ function updateGame(delta, now) {
 
   checkAnswerCollisions();
   checkDinoCollisions(now);
+  checkFlyingDinoCollisions(previousZrexY);
 
   game.answerTokens = game.answerTokens.filter((token) => token.x > -120 && !token.hit);
 
@@ -371,6 +415,7 @@ function updateGame(delta, now) {
   }
 
   game.badDinos = game.badDinos.filter((dino) => dino.x > -90);
+  game.flyingDinos = game.flyingDinos.filter((dino) => dino.x > -120);
 
   if (game.messageUntil && now > game.messageUntil) {
     game.message = "Jump into the correct integer answer.";
@@ -430,12 +475,44 @@ function checkDinoCollisions(now) {
   });
 }
 
+function checkFlyingDinoCollisions(previousZrexY) {
+  const rexBox = getZrexBox();
+
+  game.flyingDinos.forEach((dino) => {
+    const dinoBox = getFlyingDinoBox(dino);
+    const overlapsX = rexBox.x < dinoBox.x + dinoBox.width && rexBox.x + rexBox.width > dinoBox.x;
+
+    if (!overlapsX) return;
+
+    if (zrex.velocityY >= 0 && previousZrexY <= dinoBox.y + 4 && zrex.y >= dinoBox.y) {
+      zrex.y = dinoBox.y;
+      zrex.velocityY = 0;
+      zrex.isJumping = false;
+      return;
+    }
+
+    if (zrex.velocityY < 0 && boxesOverlap(rexBox, dinoBox)) {
+      zrex.velocityY = 1.4;
+      zrex.y += 4;
+    }
+  });
+}
+
 function getGroundObstacleBox(dino) {
   return {
     x: dino.x,
     y: dino.y - dino.height - 18,
     width: dino.width + 8,
     height: dino.height + 36
+  };
+}
+
+function getFlyingDinoBox(dino) {
+  return {
+    x: dino.x + 4,
+    y: dino.y,
+    width: dino.width - 8,
+    height: dino.height
   };
 }
 
@@ -470,8 +547,9 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground();
   drawProblemBanner();
-  drawTokens();
   drawBadDinos();
+  drawFlyingDinos();
+  drawTokens();
   drawZrex();
 }
 
@@ -596,6 +674,55 @@ function drawBadDinos() {
     ctx.fillStyle = "#5a3826";
     ctx.fillRect(dino.x + 8, dino.y + bounce, 11, 18);
     ctx.fillRect(dino.x + 36, dino.y + bounce, 11, 18);
+  });
+}
+
+function drawFlyingDinos() {
+  game.flyingDinos.forEach((dino) => {
+    const flap = Math.sin(dino.flap) * 9;
+    ctx.fillStyle = "#2f7f8f";
+    ctx.fillRect(dino.x + 24, dino.y + 12, dino.width - 36, 22);
+    ctx.fillRect(dino.x + 1, dino.y + 4, 30, 22);
+
+    ctx.fillStyle = "#7fc6d4";
+    ctx.beginPath();
+    ctx.moveTo(dino.x + 34, dino.y + 17);
+    ctx.lineTo(dino.x + 78, dino.y - 22 + flap);
+    ctx.lineTo(dino.x + 58, dino.y + 35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(dino.x + 50, dino.y + 18);
+    ctx.lineTo(dino.x + 92, dino.y - 8 - flap);
+    ctx.lineTo(dino.x + 82, dino.y + 34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#2a6876";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(dino.x + 36, dino.y + 18);
+    ctx.lineTo(dino.x + 86, dino.y + 20);
+    ctx.stroke();
+
+    ctx.fillStyle = "#2a6876";
+    ctx.beginPath();
+    ctx.moveTo(dino.x + dino.width - 16, dino.y + 20);
+    ctx.lineTo(dino.x + dino.width + 10, dino.y + 12);
+    ctx.lineTo(dino.x + dino.width - 16, dino.y + 28);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#1f2a44";
+    ctx.beginPath();
+    ctx.arc(dino.x + 10, dino.y + 12, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#1f2a44";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(dino.x + 10, dino.y + dino.height);
+    ctx.lineTo(dino.x + dino.width - 8, dino.y + dino.height);
+    ctx.stroke();
   });
 }
 
