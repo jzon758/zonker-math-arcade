@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fraction Forge</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Zonker Math Arcade</div>
+    <nav class="nav">
+      <a href="../index.html">Home</a>
+      <a href="../about.html">About</a>
+    </nav>
+  </header>
+
+  <main class="page-wrap forge-page">
+    <section class="forge-shell">
+      <div class="forge-topbar">
+        <div>
+          <h1>Fraction Forge</h1>
+          <p id="forgeStatus" class="page-subtext">Forge items by solving fraction steps.</p>
+        </div>
+
+        <div class="forge-hud">
+          <div class="pill"><span>Score</span><strong id="forgeScore">0</strong></div>
+          <div class="pill"><span>Combo</span><strong id="forgeCombo">0</strong></div>
+          <div class="pill"><span>High Score</span><strong id="forgeHighScore">0</strong></div>
+          <div class="pill"><span>Items</span><strong id="forgeItems">0</strong></div>
+        </div>
+      </div>
+
+      <div class="forge-layout">
+        <section class="forge-work-panel">
+          <div class="forge-expression-card">
+            <span>Fraction Problem</span>
+            <strong id="forgeExpression">Press Start</strong>
+          </div>
+
+          <p id="forgeStepLabel" class="forge-step-label">Step 0</p>
+          <h2 id="forgePrompt" class="forge-prompt">Start a new forge round.</h2>
+          <div id="forgeChoices" class="forge-choice-grid"></div>
+          <p id="forgeFeedback" class="feedback"></p>
+
+          <div class="forge-actions">
+            <button id="forgeStartButton" class="primary-button" type="button">Start Forging</button>
+            <button id="forgeNewProblemButton" class="secondary-button" type="button">New Problem</button>
+          </div>
+        </section>
+
+        <section class="forge-visual-panel" aria-label="Forge visual progress">
+          <div class="forge-meter-row">
+            <span>Heat</span>
+            <div class="forge-meter">
+              <div id="forgeHeatFill" class="forge-heat-fill"></div>
+            </div>
+          </div>
+
+          <div class="forge-stage" id="forgeStage">
+            <div class="forge-glow"></div>
+            <div class="forge-sparks" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <div id="forgeHammer" class="forge-hammer"></div>
+            <div class="forge-anvil"></div>
+            <div id="forgeItem" class="forge-item"></div>
+          </div>
+
+          <div class="forge-meter-row">
+            <span>Progress</span>
+            <div class="forge-meter">
+              <div id="forgeProgressFill" class="forge-progress-fill"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="../scripts/fraction-forge.js"></script>
+</body>
+</html>
