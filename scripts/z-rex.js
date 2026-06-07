@@ -326,7 +326,8 @@ function updateHud() {
 function updateGame(delta, now) {
   if (!game.running) return;
 
-  const speed = isStunned() ? game.speed * 0.35 : game.speed;
+  const speed = game.speed;
+  const groundObstacleSpeed = isStunned() ? speed * 0.35 : speed;
 
   zrex.velocityY += game.gravity;
   zrex.y += zrex.velocityY;
@@ -343,7 +344,7 @@ function updateGame(delta, now) {
   });
 
   game.badDinos.forEach((dino) => {
-    dino.x -= speed * 1.06;
+    dino.x -= groundObstacleSpeed * 1.06;
     dino.wobble += delta * 0.01;
   });
 
@@ -420,13 +421,22 @@ function checkDinoCollisions(now) {
   game.badDinos.forEach((dino) => {
     if (dino.hit) return;
 
-    if (boxesOverlap(rexBox, dino)) {
+    if (boxesOverlap(rexBox, getGroundObstacleBox(dino))) {
       dino.hit = true;
       zrex.stunUntil = now + 900;
       game.message = "Bad dino bump. Keep moving!";
       game.messageUntil = now + 1400;
     }
   });
+}
+
+function getGroundObstacleBox(dino) {
+  return {
+    x: dino.x,
+    y: dino.y - dino.height - 18,
+    width: dino.width + 8,
+    height: dino.height + 36
+  };
 }
 
 function getZrexBox() {
@@ -651,10 +661,22 @@ function drawZrex() {
   ctx.beginPath();
   ctx.arc(baseX + 96, baseY - 96, 5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#1f2a44";
-  ctx.beginPath();
-  ctx.arc(baseX + 98, baseY - 95, 2.2, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.strokeStyle = "#1f2a44";
+  ctx.lineWidth = 2.5;
+  if (stunned) {
+    ctx.beginPath();
+    ctx.moveTo(baseX + 93, baseY - 99);
+    ctx.lineTo(baseX + 101, baseY - 91);
+    ctx.moveTo(baseX + 101, baseY - 99);
+    ctx.lineTo(baseX + 93, baseY - 91);
+    ctx.stroke();
+    drawStunStars(baseX, baseY);
+  } else {
+    ctx.fillStyle = "#1f2a44";
+    ctx.beginPath();
+    ctx.arc(baseX + 98, baseY - 95, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.strokeStyle = "#24438a";
   ctx.lineWidth = 4;
@@ -676,6 +698,22 @@ function drawZrex() {
   ctx.moveTo(baseX + 58, baseY - 58);
   ctx.lineTo(baseX + 84, baseY - 45);
   ctx.stroke();
+}
+
+function drawStunStars(baseX, baseY) {
+  ctx.strokeStyle = "#f7c948";
+  ctx.lineWidth = 3;
+  [
+    { x: baseX + 82, y: baseY - 126 },
+    { x: baseX + 112, y: baseY - 118 }
+  ].forEach((star) => {
+    ctx.beginPath();
+    ctx.moveTo(star.x, star.y - 7);
+    ctx.lineTo(star.x, star.y + 7);
+    ctx.moveTo(star.x - 7, star.y);
+    ctx.lineTo(star.x + 7, star.y);
+    ctx.stroke();
+  });
 }
 
 function drawGameOverZrex(baseX, baseY, bodyColor, bellyColor) {
