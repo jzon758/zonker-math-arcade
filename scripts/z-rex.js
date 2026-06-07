@@ -46,6 +46,7 @@ const game = {
   nextDinoAt: 0,
   lastTime: 0,
   gameOver: false,
+  backgroundFreezeTime: 0,
   message: "Press Start to help Z-Rex hunt integers.",
   messageUntil: 0
 };
@@ -167,6 +168,7 @@ function startGame() {
   game.nextTokenAt = performance.now() + 1500;
   game.nextDinoAt = performance.now() + 3600;
   game.gameOver = false;
+  game.backgroundFreezeTime = 0;
   game.message = "Go, Z-Rex!";
   game.messageUntil = performance.now() + 1400;
   zrex.y = groundY;
@@ -191,6 +193,7 @@ function resetGame() {
   game.nextTokenAt = 0;
   game.currentProblem = null;
   game.gameOver = false;
+  game.backgroundFreezeTime = 0;
   game.message = "Press Start to help Z-Rex hunt integers.";
   game.messageUntil = 0;
   zrex.y = groundY;
@@ -206,7 +209,6 @@ function endRunAfterFailure(message) {
   updateHighScore();
 
   game.running = false;
-  game.score = 0;
   game.runCorrect = 0;
   game.level = 1;
   game.speed = baseSpeed;
@@ -218,6 +220,7 @@ function endRunAfterFailure(message) {
   game.nextDinoAt = 0;
   game.currentProblem = null;
   game.gameOver = true;
+  game.backgroundFreezeTime = performance.now();
   game.message = "Game over — press Start to try again.";
   game.messageUntil = 0;
   zrex.y = groundY;
@@ -464,7 +467,12 @@ function draw() {
 
 function drawBackground() {
   const horizon = 360;
-  const offset = game.running ? (performance.now() * game.speed * 0.015) % 240 : 0;
+  const backgroundSpeed = game.running ? game.speed : baseSpeed;
+  const time = game.gameOver ? game.backgroundFreezeTime : performance.now();
+  const cloudOffset = (time * backgroundSpeed * 0.01) % 520;
+  const ridgeOffset = (time * backgroundSpeed * 0.02) % 240;
+  const scrubOffset = (time * backgroundSpeed * 0.055) % 190;
+  const groundOffset = (time * backgroundSpeed * 0.08) % 120;
 
   const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
   sky.addColorStop(0, "#dff4ff");
@@ -473,9 +481,11 @@ function drawBackground() {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  drawClouds(cloudOffset);
+
   ctx.fillStyle = "rgba(104, 126, 74, 0.28)";
   for (let i = -1; i < 6; i++) {
-    const x = i * 240 - offset * 0.35;
+    const x = i * 240 - ridgeOffset;
     ctx.beginPath();
     ctx.moveTo(x, horizon);
     ctx.lineTo(x + 120, 230);
@@ -487,10 +497,12 @@ function drawBackground() {
   ctx.fillStyle = "#d7a557";
   ctx.fillRect(0, horizon, canvas.width, canvas.height - horizon);
 
+  drawDesertScrub(scrubOffset, horizon);
+
   ctx.strokeStyle = "rgba(101, 70, 38, 0.28)";
   ctx.lineWidth = 3;
   for (let i = -1; i < 12; i++) {
-    const x = i * 120 - offset;
+    const x = i * 120 - groundOffset;
     ctx.beginPath();
     ctx.moveTo(x, groundY + 38);
     ctx.lineTo(x + 46, groundY + 30);
@@ -499,6 +511,40 @@ function drawBackground() {
 
   ctx.fillStyle = "#9b6c37";
   ctx.fillRect(0, groundY + 28, canvas.width, 8);
+}
+
+function drawClouds(offset) {
+  const clouds = [
+    { x: 70, y: 92, scale: 1 },
+    { x: 360, y: 134, scale: 0.75 },
+    { x: 670, y: 78, scale: 1.15 },
+    { x: 960, y: 150, scale: 0.85 }
+  ];
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+  clouds.forEach((cloud) => {
+    const x = ((cloud.x - offset + 120) % 1080) - 120;
+    const y = cloud.y;
+    const s = cloud.scale;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 18 * s, 0, Math.PI * 2);
+    ctx.arc(x + 24 * s, y - 10 * s, 24 * s, 0, Math.PI * 2);
+    ctx.arc(x + 54 * s, y, 19 * s, 0, Math.PI * 2);
+    ctx.fillRect(x - 3 * s, y, 60 * s, 15 * s);
+    ctx.fill();
+  });
+}
+
+function drawDesertScrub(offset, horizon) {
+  ctx.fillStyle = "rgba(96, 122, 68, 0.45)";
+  for (let i = -1; i < 8; i++) {
+    const x = i * 190 - offset;
+    const y = horizon + 36 + (i % 3) * 14;
+    ctx.fillRect(x + 22, y, 8, 30);
+    ctx.fillRect(x + 10, y + 11, 32, 7);
+    ctx.fillRect(x + 116, y + 18, 36, 8);
+  }
 }
 
 function drawTokens() {
@@ -544,10 +590,18 @@ function drawBadDinos() {
 }
 
 function drawZrex() {
+  const baseX = zrex.x;
+  const gameOverBody = "#8fa66c";
+  const gameOverBelly = "#e8d99a";
+
+  if (game.gameOver) {
+    drawGameOverZrex(baseX, groundY + 4, gameOverBody, gameOverBelly);
+    return;
+  }
+
   const stunned = isStunned();
   const ducking = zrex.isDucking && !zrex.isJumping;
   const bob = zrex.isJumping ? 0 : Math.sin(zrex.bob) * 3;
-  const baseX = zrex.x;
   const baseY = zrex.y + bob;
   const bodyColor = stunned ? "#8fa66c" : "#4d9d5a";
   const bellyColor = stunned ? "#e8d99a" : "#f3e39b";
@@ -621,6 +675,30 @@ function drawZrex() {
   ctx.beginPath();
   ctx.moveTo(baseX + 58, baseY - 58);
   ctx.lineTo(baseX + 84, baseY - 45);
+  ctx.stroke();
+}
+
+function drawGameOverZrex(baseX, baseY, bodyColor, bellyColor) {
+  drawDuckingZrex(baseX - 4, baseY, bodyColor, bellyColor);
+
+  ctx.strokeStyle = "#1f2a44";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(baseX + 112, baseY - 55);
+  ctx.lineTo(baseX + 124, baseY - 43);
+  ctx.moveTo(baseX + 124, baseY - 55);
+  ctx.lineTo(baseX + 112, baseY - 43);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#f7c948";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(baseX + 78, baseY - 82);
+  ctx.lineTo(baseX + 88, baseY - 96);
+  ctx.lineTo(baseX + 98, baseY - 82);
+  ctx.lineTo(baseX + 78, baseY - 90);
+  ctx.lineTo(baseX + 98, baseY - 90);
+  ctx.closePath();
   ctx.stroke();
 }
 
