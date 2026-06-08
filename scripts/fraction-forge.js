@@ -2,6 +2,7 @@ const scoreEl = document.getElementById("forgeScore");
 const comboEl = document.getElementById("forgeCombo");
 const highScoreEl = document.getElementById("forgeHighScore");
 const itemsEl = document.getElementById("forgeItems");
+const levelEl = document.getElementById("forgeLevel");
 const statusEl = document.getElementById("forgeStatus");
 const expressionEl = document.getElementById("forgeExpression");
 const stepLabelEl = document.getElementById("forgeStepLabel");
@@ -9,26 +10,43 @@ const promptEl = document.getElementById("forgePrompt");
 const choicesEl = document.getElementById("forgeChoices");
 const feedbackEl = document.getElementById("forgeFeedback");
 const startButton = document.getElementById("forgeStartButton");
-const newProblemButton = document.getElementById("forgeNewProblemButton");
+const workPanelEl = document.querySelector(".forge-work-panel");
+const pauseOverlayEl = document.getElementById("forgePauseOverlay");
 const stageEl = document.getElementById("forgeStage");
 const itemEl = document.getElementById("forgeItem");
 const hammerEl = document.getElementById("forgeHammer");
+const levelOverlayEl = document.getElementById("forgeLevelOverlay");
 const heatFillEl = document.getElementById("forgeHeatFill");
 const progressFillEl = document.getElementById("forgeProgressFill");
+const forgedSlotEls = document.querySelectorAll(".forged-slot");
 
 const highScoreKey = "fractionForgeHighScore";
-const operations = ["add", "subtract"];
+const operations = ["add", "subtract", "multiply", "divide"];
+const baseHeatDrainPerSecond = 1.15;
+const wrongHeatPenalty = 18;
+const itemHeatBonus = 20;
+const itemScoreBonus = 10;
+const forgedItemsPerLevel = 4;
+const forgedItemNames = ["Sword", "Shield", "Hammer", "Key", "Axe", "Crown", "Pickaxe", "Wrench"];
 
 const game = {
   score: 0,
   combo: 0,
   highScore: loadHighScore(),
   itemsForged: 0,
+  level: 1,
   progress: 0,
-  heat: 40,
+  heat: 100,
   currentProblem: null,
   stepIndex: 0,
   active: false,
+  running: false,
+  gameOver: false,
+  paused: false,
+  lastHeatUpdate: 0,
+  transitionId: 0,
+  forgedSlots: [],
+  resetSlotsOnNextProblem: false,
   recentSimplificationNeeds: []
 };
 
@@ -94,21 +112,39 @@ function subtractFractions(first, second) {
   };
 }
 
+function multiplyFractions(first, second) {
+  return {
+    numerator: first.numerator * second.numerator,
+    denominator: first.denominator * second.denominator
+  };
+}
+
+function reciprocalFraction(fraction) {
+  return {
+    numerator: fraction.denominator,
+    denominator: fraction.numerator
+  };
+}
+
 function compareFractions(first, second) {
   return first.numerator * second.denominator - second.numerator * first.denominator;
 }
 
 function formatFraction(fraction) {
+  if (fraction.denominator === 1) {
+    return String(fraction.numerator);
+  }
+
   return `${fraction.numerator}/${fraction.denominator}`;
 }
 
 function formatExpression(problem) {
-  const symbol = problem.operation === "add" ? "+" : "-";
+  const symbol = getOperationSymbol(problem.operation);
   return `${formatFraction(problem.fractions[0])} ${symbol} ${formatFraction(problem.fractions[1])}`;
 }
 
 function formatCommonDenominatorExpression(problem) {
-  const symbol = problem.operation === "add" ? "+" : "-";
+  const symbol = getOperationSymbol(problem.operation);
   const first = problem.fractions[0];
   const second = problem.fractions[1];
   const convertedFirst = {
@@ -123,8 +159,24 @@ function formatCommonDenominatorExpression(problem) {
   return `${formatFraction(convertedFirst)} ${symbol} ${formatFraction(convertedSecond)}`;
 }
 
+function getOperationSymbol(operation) {
+  if (operation === "add") return "+";
+  if (operation === "subtract") return "-";
+  if (operation === "multiply") return "×";
+  if (operation === "divide") return "÷";
+  return "?";
+}
+
+function formatMultiplicationExpression(first, second) {
+  return `${formatFraction(first)} × ${formatFraction(second)}`;
+}
+
+function formatDivisionRewriteExpression(problem) {
+  return formatMultiplicationExpression(problem.fractions[0], reciprocalFraction(problem.fractions[1]));
+}
+
 function getWorkingDisplay(problem, step) {
-  if (!step || step.type === "common-denominator-needed") {
+  if (!step || step.type === "first-move") {
     return formatExpression(problem);
   }
 
@@ -136,7 +188,15 @@ function getWorkingDisplay(problem, step) {
     return problem.needsCommonDenominator ? formatCommonDenominatorExpression(problem) : formatExpression(problem);
   }
 
-  if (step.type === "simplify-needed" || step.type === "reduce-final-answer") {
+  if (step.type === "division-rewrite") {
+    return formatExpression(problem);
+  }
+
+  if (step.type === "multiply-product") {
+    return problem.operation === "divide" ? formatDivisionRewriteExpression(problem) : formatExpression(problem);
+  }
+
+  if (step.type === "simplify-needed") {
     return formatFraction(problem.rawResult);
   }
 
@@ -165,6 +225,112 @@ function makeProperFraction(denominator) {
     numerator: randomInt(1, denominator - 1),
     denominator
   };
+}
+
+function makeFriendlyFraction(denominator, maxNumerator) {
+  return {
+    numerator: randomInt(1, Math.min(denominator - 1, maxNumerator)),
+    denominator
+  };
+}
+
+function makeProductFraction(denominator, config) {
+  if (config.productHighNumeratorChance && Math.random() < config.productHighNumeratorChance) {
+    const minimum = Math.max(1, Math.ceil(denominator * config.productMinNumeratorRatio));
+    return {
+      numerator: randomInt(minimum, denominator - 1),
+      denominator
+    };
+  }
+
+  return makeFriendlyFraction(denominator, config.maxNumerator);
+}
+
+function getProblemDifficultyLevel() {
+  return Math.floor(game.level / 2) + 1;
+}
+
+function getHeatDifficultyLevel() {
+  return Math.floor((game.level - 1) / 2) + 1;
+}
+
+function getHeatDrainRate() {
+  return baseHeatDrainPerSecond + (getHeatDifficultyLevel() - 1) * 0.3;
+}
+
+function getCorrectHeatBonus() {
+  return Math.max(8, 14 - (getHeatDifficultyLevel() - 1) * 2);
+}
+
+function getDifficultyConfig() {
+  const configs = [
+    {
+      denominators: [2, 3, 4, 5, 6, 8, 10],
+      productDenominators: [2, 3, 4, 5, 6],
+      maxNumerator: 4,
+      commonDenominatorCap: 12,
+      maxProductValue: 48,
+      easyPairChance: 0.9,
+      likeDenominatorChance: 0.5,
+      divisionImproperChance: 0,
+      allowedReductionFactors: [2, 3, 5]
+    },
+    {
+      denominators: [2, 3, 4, 5, 6, 8, 10, 12],
+      productDenominators: [2, 3, 4, 5, 6, 8],
+      maxNumerator: 5,
+      commonDenominatorCap: 24,
+      maxProductValue: 72,
+      easyPairChance: 0.72,
+      likeDenominatorChance: 0.4,
+      divisionImproperChance: 0.05,
+      allowedReductionFactors: [2, 3, 4, 5, 6]
+    },
+    {
+      denominators: [3, 4, 5, 6, 8, 9, 10, 12],
+      productDenominators: [3, 4, 5, 6, 8, 9, 10],
+      maxNumerator: 7,
+      commonDenominatorCap: 36,
+      maxProductValue: 110,
+      easyPairChance: 0.5,
+      likeDenominatorChance: 0.3,
+      divisionImproperChance: 0.15,
+      allowedReductionFactors: [2, 3, 4, 5, 6, 8, 9]
+    },
+    {
+      denominators: [3, 4, 5, 6, 7, 8, 9, 10, 12],
+      productDenominators: [3, 4, 5, 6, 7, 8, 9, 10, 12],
+      maxNumerator: 9,
+      commonDenominatorCap: 60,
+      maxProductValue: 150,
+      easyPairChance: 0.34,
+      likeDenominatorChance: 0.24,
+      divisionImproperChance: 0.3,
+      allowedReductionFactors: [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    },
+    {
+      denominators: [16, 18, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+      productDenominators: [16, 18, 20, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32],
+      maxNumerator: 31,
+      commonDenominatorCap: 999,
+      minCommonDenominator: 100,
+      maxProductValue: 999,
+      easyPairChance: 0.08,
+      likeDenominatorChance: 0.05,
+      divisionImproperChance: 0.82,
+      productHighNumeratorChance: 0.72,
+      productMinNumeratorRatio: 0.55,
+      allowedReductionFactors: null
+    }
+  ];
+
+  return configs[Math.min(configs.length - 1, getProblemDifficultyLevel() - 1)];
+}
+
+function getLevelUpMessage(level) {
+  return level % 2 === 0
+    ? `Level ${level}: Stronger fractions!`
+    : `Level ${level}: The forge burns faster!`;
 }
 
 function makeProblem() {
@@ -217,23 +383,19 @@ function makeValidSubtractionFallback() {
 function makeProblemCandidate(forcedOperation) {
   const operation = randomFrom(operations);
   const selectedOperation = forcedOperation || operation;
-  const useLikeDenominators = Math.random() < 0.45;
-  let first;
-  let second;
+  const config = getDifficultyConfig();
 
-  if (useLikeDenominators) {
-    const denominator = randomInt(3, 12);
-    first = makeProperFraction(denominator);
-    second = makeProperFraction(denominator);
-  } else {
-    const firstDenominator = randomInt(3, 12);
-    let secondDenominator = randomInt(3, 12);
-    while (secondDenominator === firstDenominator) {
-      secondDenominator = randomInt(3, 12);
-    }
-    first = makeProperFraction(firstDenominator);
-    second = makeProperFraction(secondDenominator);
+  if (selectedOperation === "multiply" || selectedOperation === "divide") {
+    return makeProductProblemCandidate(selectedOperation, config);
   }
+
+  return makeAddSubtractProblemCandidate(selectedOperation, config);
+}
+
+function makeAddSubtractProblemCandidate(selectedOperation, config) {
+  const fractions = makeAddSubtractFractions(config);
+  let first = fractions[0];
+  let second = fractions[1];
 
   if (selectedOperation === "subtract" && compareFractions(first, second) <= 0) {
     const temp = first;
@@ -241,14 +403,117 @@ function makeProblemCandidate(forcedOperation) {
     second = temp;
   }
 
-  const rawResult = selectedOperation === "add" ? addFractions(first, second) : subtractFractions(first, second);
+  const rawResult = selectedOperation === "add"
+    ? addFractions(first, second)
+    : subtractFractions(first, second);
+
+  return makeProblemFromParts(selectedOperation, first, second, rawResult);
+}
+
+function makeProductProblemCandidate(selectedOperation, config) {
+  const denominatorPool = config.productDenominators;
+  const allowImproperDivision =
+    selectedOperation === "divide" && Math.random() < config.divisionImproperChance;
+  let first;
+  let second;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    first = makeProductFraction(randomFrom(denominatorPool), config);
+    second = makeProductFraction(randomFrom(denominatorPool), config);
+
+    if (
+      selectedOperation !== "divide" ||
+      allowImproperDivision ||
+      compareFractions(first, second) <= 0
+    ) {
+      break;
+    }
+  }
+
+  if (
+    selectedOperation === "divide" &&
+    compareFractions(first, second) > 0 &&
+    !allowImproperDivision
+  ) {
+    const temp = first;
+    first = second;
+    second = temp;
+  }
+
+  const rawResult = selectedOperation === "divide"
+    ? multiplyFractions(first, reciprocalFraction(second))
+    : multiplyFractions(first, second);
+
+  return makeProblemFromParts(selectedOperation, first, second, rawResult);
+}
+
+function makeAddSubtractFractions(config) {
+  const pairTypeRoll = Math.random();
+  const useLikeDenominators = pairTypeRoll < config.likeDenominatorChance;
+  const useEasyPair = pairTypeRoll < config.easyPairChance;
+
+  if (useLikeDenominators) {
+    const denominator = randomFrom(config.denominators);
+    return [makeProperFraction(denominator), makeProperFraction(denominator)];
+  }
+
+  const denominatorPair = useEasyPair
+    ? makeMultipleDenominatorPair(config)
+    : makeCappedDenominatorPair(config);
+
+  return [makeProperFraction(denominatorPair[0]), makeProperFraction(denominatorPair[1])];
+}
+
+function makeMultipleDenominatorPair(config) {
+  const pairs = [];
+  config.denominators.forEach((first) => {
+    config.denominators.forEach((second) => {
+      if (
+        first !== second &&
+        lcm(first, second) <= config.commonDenominatorCap &&
+        (first % second === 0 || second % first === 0)
+      ) {
+        pairs.push([first, second]);
+      }
+    });
+  });
+
+  return pairs.length ? randomFrom(pairs) : makeCappedDenominatorPair(config);
+}
+
+function makeCappedDenominatorPair(config) {
+  const pairs = [];
+  const preferredPairs = [];
+  config.denominators.forEach((first) => {
+    config.denominators.forEach((second) => {
+      const commonDenominator = lcm(first, second);
+      if (first !== second && commonDenominator <= config.commonDenominatorCap) {
+        pairs.push([first, second]);
+        if (!config.minCommonDenominator || commonDenominator >= config.minCommonDenominator) {
+          preferredPairs.push([first, second]);
+        }
+      }
+    });
+  });
+
+  if (preferredPairs.length) {
+    return randomFrom(preferredPairs);
+  }
+
+  return pairs.length ? randomFrom(pairs) : [config.denominators[0], config.denominators[1]];
+}
+
+function makeProblemFromParts(selectedOperation, first, second, rawResult) {
   const simplifiedResult = simplifyFraction(rawResult);
 
   const problem = {
     operation: selectedOperation,
     fractions: [first, second],
     commonDenominator: lcm(first.denominator, second.denominator),
-    needsCommonDenominator: first.denominator !== second.denominator,
+    needsCommonDenominator:
+      selectedOperation !== "multiply" &&
+      selectedOperation !== "divide" &&
+      first.denominator !== second.denominator,
     rawResult,
     simplifiedResult,
     needsSimplifying:
@@ -261,10 +526,39 @@ function makeProblemCandidate(forcedOperation) {
   return problem;
 }
 
+function hasFriendlyReduction(problem, config) {
+  if (!problem.needsSimplifying || !config.allowedReductionFactors) {
+    return true;
+  }
+
+  return config.allowedReductionFactors.includes(gcd(problem.rawResult.numerator, problem.rawResult.denominator));
+}
+
+function isWithinSizeLimits(problem, config) {
+  if (problem.operation === "add" || problem.operation === "subtract") {
+    return problem.commonDenominator <= config.commonDenominatorCap;
+  }
+
+  return (
+    problem.rawResult.numerator <= config.maxProductValue &&
+    problem.rawResult.denominator <= config.maxProductValue
+  );
+}
+
 function isValidProblem(problem) {
+  const config = getDifficultyConfig();
+  const resultAtOrBelowOne =
+    problem.simplifiedResult.numerator <= problem.simplifiedResult.denominator;
+  const divisionCanBeImproper =
+    problem.operation === "divide" &&
+    getProblemDifficultyLevel() >= 4 &&
+    Math.max(problem.rawResult.numerator, problem.rawResult.denominator) <= config.maxProductValue;
+
   return (
     problem.simplifiedResult.numerator > 0 &&
-    problem.simplifiedResult.numerator <= problem.simplifiedResult.denominator
+    (resultAtOrBelowOne || divisionCanBeImproper) &&
+    isWithinSizeLimits(problem, config) &&
+    hasFriendlyReduction(problem, config)
   );
 }
 
@@ -291,6 +585,14 @@ function rememberSimplificationNeed(problem) {
 }
 
 function buildStepsForProblem(problem) {
+  if (problem.operation === "multiply") {
+    return buildMultiplicationSteps(problem);
+  }
+
+  if (problem.operation === "divide") {
+    return buildDivisionSteps(problem);
+  }
+
   const steps = [];
   const first = problem.fractions[0];
   const second = problem.fractions[1];
@@ -305,9 +607,9 @@ function buildStepsForProblem(problem) {
   };
 
   steps.push(makeStep(
-    "common-denominator-needed",
-    "Do these fractions need a new common denominator?",
-    makeCommonDenominatorChoices(problem),
+    "first-move",
+    "What is the best first move?",
+    makeFirstMoveChoices(problem),
     problem.needsCommonDenominator
       ? "Right. Unlike denominators need equivalent fractions first."
       : "Right. The denominators already match, so no conversion is needed."
@@ -341,6 +643,71 @@ function buildStepsForProblem(problem) {
   return steps;
 }
 
+function buildMultiplicationSteps(problem) {
+  const steps = [];
+
+  steps.push(makeStep(
+    "first-move",
+    "What is the best first move?",
+    makeFirstMoveChoices(problem),
+    "Right. Multiply straight across: numerator times numerator, denominator times denominator."
+  ));
+
+  steps.push(makeStep(
+    "multiply-product",
+    "What is the product before simplifying?",
+    makeMultiplicationProductChoices(problem),
+    "Correct strike. That is the product before simplifying."
+  ));
+
+  steps.push(makeStep(
+    "simplify-needed",
+    `Is ${formatFraction(problem.rawResult)} simplified?`,
+    makeSimplifyDecisionChoices(problem),
+    problem.needsSimplifying
+      ? "Right. That is the simplest form."
+      : "Right. That answer is already in simplest form."
+  ));
+
+  return steps;
+}
+
+function buildDivisionSteps(problem) {
+  const steps = [];
+
+  steps.push(makeStep(
+    "first-move",
+    "What is the best first move?",
+    makeFirstMoveChoices(problem),
+    "Right. Divide fractions by multiplying by the reciprocal."
+  ));
+
+  steps.push(makeStep(
+    "division-rewrite",
+    "Which multiplication expression matches this division problem?",
+    makeDivisionRewriteChoices(problem),
+    "Nice rewrite. Now multiply straight across."
+  ));
+
+  steps.push(makeStep(
+    "multiply-product",
+    "What is the product before simplifying?",
+    makeMultiplicationProductChoices(problem),
+    "Correct strike. That is the product before simplifying."
+  ));
+
+  steps.push(makeStep(
+    "simplify-needed",
+    `Is ${formatFraction(problem.rawResult)} simplified?`,
+    makeSimplifyDecisionChoices(problem),
+    problem.needsSimplifying
+      ? "Right. That is the simplest form."
+      : "Right. That answer is already in simplest form."
+  ));
+
+  return steps;
+}
+
 function makeStep(type, prompt, choices, correctFeedback) {
   return {
     type,
@@ -350,21 +717,39 @@ function makeStep(type, prompt, choices, correctFeedback) {
   };
 }
 
-function makeCommonDenominatorChoices(problem) {
-  if (problem.needsCommonDenominator) {
+function makeFirstMoveChoices(problem) {
+  if (problem.operation === "add" || problem.operation === "subtract") {
+    if (problem.needsCommonDenominator) {
+      return [
+        { text: "Find a common denominator", correct: true },
+        { text: "Denominators already match; combine the numerators", correct: false },
+        { text: "Multiply numerators and denominators", correct: false },
+        { text: "Add or subtract the denominators too", correct: false }
+      ];
+    }
+
     return [
-      { text: "Yes, make common denominators", correct: true },
-      { text: "Yes, flip the second fraction", correct: false },
-      { text: "No, the denominators already match", correct: false },
-      { text: "No, only numerators need to match", correct: false }
+      { text: "Denominators already match; combine the numerators", correct: true },
+      { text: "Find a common denominator", correct: false },
+      { text: "Multiply numerators and denominators", correct: false },
+      { text: "Add or subtract the denominators too", correct: false }
+    ];
+  }
+
+  if (problem.operation === "divide") {
+    return [
+      { text: "Multiply by the reciprocal", correct: true },
+      { text: "Find a common denominator", correct: false },
+      { text: "Multiply numerators and denominators", correct: false },
+      { text: "Flip both fractions", correct: false }
     ];
   }
 
   return [
-    { text: "No, the denominators already match", correct: true },
-    { text: "No, only numerators need to match", correct: false },
-    { text: "Yes, make a new common denominator", correct: false },
-    { text: "Yes, add the denominators first", correct: false }
+    { text: "Multiply numerators and multiply denominators", correct: true },
+    { text: "Make common denominators first", correct: false },
+    { text: "Add numerators and add denominators", correct: false },
+    { text: "Flip the second fraction before multiplying", correct: false }
   ];
 }
 
@@ -407,6 +792,48 @@ function makeCombineResultChoices(problem, commonFirst, commonSecond) {
     {
       numerator: Math.abs(commonFirst.numerator - commonSecond.numerator),
       denominator: denominatorMistake
+    }
+  ]);
+}
+
+function makeDivisionRewriteChoices(problem) {
+  const first = problem.fractions[0];
+  const second = problem.fractions[1];
+  const reciprocalSecond = reciprocalFraction(second);
+
+  return makeUniqueChoices([
+    { text: formatMultiplicationExpression(first, reciprocalSecond), correct: true },
+    { text: formatMultiplicationExpression(first, second), correct: false },
+    { text: formatMultiplicationExpression(reciprocalFraction(first), second), correct: false },
+    { text: `${formatFraction(first)} + ${formatFraction(reciprocalSecond)}`, correct: false },
+    { text: formatMultiplicationExpression(reciprocalFraction(first), reciprocalSecond), correct: false }
+  ]);
+}
+
+function makeMultiplicationProductChoices(problem) {
+  const first = problem.fractions[0];
+  const second = problem.operation === "divide" ? reciprocalFraction(problem.fractions[1]) : problem.fractions[1];
+
+  return makeFractionChoices(problem.rawResult, [
+    {
+      numerator: first.numerator + second.numerator,
+      denominator: first.denominator + second.denominator
+    },
+    {
+      numerator: first.numerator * second.numerator,
+      denominator: first.denominator + second.denominator
+    },
+    {
+      numerator: first.numerator + second.numerator,
+      denominator: first.denominator * second.denominator
+    },
+    {
+      numerator: first.numerator * second.denominator,
+      denominator: first.denominator * second.numerator
+    },
+    {
+      numerator: first.denominator * second.denominator,
+      denominator: first.numerator * second.numerator
     }
   ]);
 }
@@ -556,19 +983,41 @@ function makeFractionChoices(correctFraction, distractors) {
 }
 
 function startGame() {
+  if (game.running && !game.gameOver) return;
+
+  levelOverlayEl.classList.remove("show", "game-over", "paused");
+  levelOverlayEl.textContent = "LEVEL UP";
   game.score = 0;
   game.combo = 0;
   game.itemsForged = 0;
+  game.level = 1;
+  game.progress = 0;
+  game.heat = 100;
+  game.running = true;
+  game.gameOver = false;
+  game.paused = false;
+  game.transitionId++;
+  game.lastHeatUpdate = getNow();
+  game.forgedSlots = [];
+  game.resetSlotsOnNextProblem = false;
   game.recentSimplificationNeeds = [];
-  game.active = true;
+  renderForgedSlots();
+  updateRunButtonState();
   startProblem();
 }
 
 function startProblem() {
+  if (!game.running || game.gameOver) return;
+
+  if (game.resetSlotsOnNextProblem) {
+    game.forgedSlots = [];
+    game.resetSlotsOnNextProblem = false;
+    renderForgedSlots();
+  }
+
   game.currentProblem = makeProblem();
   game.stepIndex = 0;
   game.progress = 0;
-  game.heat = 44;
   game.active = true;
   feedbackEl.textContent = "";
   feedbackEl.className = "feedback";
@@ -576,6 +1025,7 @@ function startProblem() {
   statusEl.textContent = "Choose the best next fraction step.";
   renderStep();
   updateHud();
+  updateRunButtonState();
   updateForgeVisual();
 }
 
@@ -603,7 +1053,7 @@ function setChoiceButtonsDisabled(disabled) {
 }
 
 function handleChoice(choice, button) {
-  if (!game.active) return;
+  if (!game.running || !game.active || game.gameOver || game.paused) return;
 
   if (choice.correct) {
     handleCorrectChoice(button);
@@ -618,7 +1068,7 @@ function handleCorrectChoice(button) {
   game.combo++;
   game.score += 5 + Math.min(5, Math.floor(game.combo / 3));
   game.progress = Math.min(100, game.progress + Math.ceil(100 / game.currentProblem.steps.length));
-  game.heat = Math.min(100, game.heat + 12);
+  applyHeatChange(getCorrectHeatBonus());
   updateHighScore();
 
   button.classList.add("correct-flash");
@@ -630,7 +1080,12 @@ function handleCorrectChoice(button) {
   if (game.stepIndex >= game.currentProblem.steps.length) {
     finishProblem();
   } else {
-    setTimeout(renderStep, 550);
+    const transitionId = game.transitionId;
+    setTimeout(() => {
+      if (game.running && !game.gameOver && !game.paused && transitionId === game.transitionId) {
+        renderStep();
+      }
+    }, 550);
   }
 
   updateHud();
@@ -641,29 +1096,107 @@ function handleWrongChoice(button) {
   game.combo = 0;
   game.score = Math.max(0, game.score - 3);
   game.progress = Math.max(0, game.progress - 8);
-  game.heat = Math.max(10, game.heat - 16);
+  applyHeatChange(-wrongHeatPenalty);
+  const didGameOver = game.gameOver;
   updateHighScore();
 
   button.classList.add("wrong-flash");
-  feedbackEl.textContent = "Not quite. Try that step again.";
+  feedbackEl.textContent = game.gameOver ? "Game Over. Press Start to try again." : "Not quite. Try that step again.";
   feedbackEl.className = "feedback wrong";
-  triggerForgeEffect("cool");
+  if (!didGameOver) {
+    triggerForgeEffect("cool");
+  }
   updateHud();
   updateForgeVisual();
 }
 
 function finishProblem() {
+  if (!game.running || game.gameOver) return;
+
+  const previousLevel = game.level;
+  game.active = false;
+  game.transitionId++;
   game.itemsForged++;
+  game.forgedSlots.push(forgedItemNames[(game.itemsForged - 1) % forgedItemNames.length]);
+  game.level = Math.floor(game.itemsForged / forgedItemsPerLevel) + 1;
+  game.resetSlotsOnNextProblem = game.level > previousLevel;
+  game.score += itemScoreBonus;
   game.progress = 100;
-  game.heat = 100;
+  applyHeatChange(itemHeatBonus);
+  updateHighScore();
+  renderForgedSlots();
   expressionEl.textContent = formatFraction(game.currentProblem.simplifiedResult);
   feedbackEl.textContent = "Item forged!";
   feedbackEl.className = "feedback correct";
-  statusEl.textContent = "Item forged! New problem coming up.";
-  game.active = false;
+  statusEl.textContent =
+    game.level > previousLevel
+      ? `Level Up! ${getLevelUpMessage(game.level)}`
+      : "Item forged! New problem coming up.";
+  triggerForgeEffect(game.level > previousLevel ? "level" : "complete");
   updateHud();
+  updateRunButtonState();
   updateForgeVisual();
-  setTimeout(startProblem, 1300);
+  const transitionId = game.transitionId;
+  setTimeout(() => {
+    if (game.running && !game.gameOver && !game.paused && transitionId === game.transitionId) {
+      startProblem();
+    }
+  }, 1300);
+}
+
+function getNow() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function applyHeatChange(amount) {
+  if (game.gameOver) return;
+
+  game.heat = Math.max(0, Math.min(100, game.heat + amount));
+  if (game.heat <= 0) {
+    endGame();
+  }
+}
+
+function endGame() {
+  if (game.gameOver) return;
+
+  game.running = false;
+  game.active = false;
+  game.gameOver = true;
+  game.paused = false;
+  game.transitionId++;
+  game.heat = 0;
+  updateHighScore();
+  setChoiceButtonsDisabled(true);
+  statusEl.textContent = "Game Over";
+  promptEl.textContent = "Game Over";
+  feedbackEl.textContent = "Game Over. Press Start to try again.";
+  feedbackEl.className = "feedback wrong";
+  levelOverlayEl.textContent = "FORGE COOLED";
+  levelOverlayEl.classList.remove("paused");
+  levelOverlayEl.classList.add("show", "game-over");
+  updateHud();
+  updateRunButtonState();
+  updateForgeVisual();
+}
+
+function updateHeatDrain(now) {
+  if (!game.lastHeatUpdate) {
+    game.lastHeatUpdate = now;
+  }
+
+  const elapsedSeconds = Math.min(0.25, (now - game.lastHeatUpdate) / 1000);
+  game.lastHeatUpdate = now;
+
+  if (game.running && game.active && !game.gameOver && !game.paused) {
+    applyHeatChange(-getHeatDrainRate() * elapsedSeconds);
+    updateForgeVisual();
+  }
+}
+
+function runHeatLoop(now) {
+  updateHeatDrain(now);
+  requestAnimationFrame(runHeatLoop);
 }
 
 function updateHighScore() {
@@ -678,26 +1211,103 @@ function updateHud() {
   comboEl.textContent = game.combo;
   highScoreEl.textContent = game.highScore;
   itemsEl.textContent = game.itemsForged;
+  levelEl.textContent = game.level;
+}
+
+function updateRunButtonState() {
+  startButton.disabled = game.running && !game.gameOver && !game.paused && !game.active;
+  startButton.textContent = game.running && !game.gameOver
+    ? game.paused ? "Resume" : "Pause"
+    : "Start Forging";
+  workPanelEl.classList.toggle("is-paused", game.paused);
+  pauseOverlayEl.setAttribute("aria-hidden", game.paused ? "false" : "true");
+}
+
+function pauseGame() {
+  if (!game.running || game.gameOver || game.paused || !game.active) return;
+
+  game.paused = true;
+  game.lastHeatUpdate = getNow();
+  setChoiceButtonsDisabled(true);
+  statusEl.textContent = "Forge paused.";
+  levelOverlayEl.textContent = "PAUSED";
+  levelOverlayEl.classList.remove("game-over");
+  levelOverlayEl.classList.add("show", "paused");
+  updateRunButtonState();
+}
+
+function resumeGame() {
+  if (!game.running || game.gameOver || !game.paused) return;
+
+  game.paused = false;
+  game.lastHeatUpdate = getNow();
+  levelOverlayEl.classList.remove("show", "paused");
+  levelOverlayEl.textContent = "LEVEL UP";
+  statusEl.textContent = "Choose the best next fraction step.";
+  if (game.stepIndex < game.currentProblem.steps.length) {
+    renderStep();
+  }
+  updateRunButtonState();
+}
+
+function renderForgedSlots() {
+  forgedSlotEls.forEach((slot, index) => {
+    const itemName = game.forgedSlots[index];
+    slot.innerHTML = itemName
+      ? `<span class="forged-icon item-${itemName.toLowerCase()}"></span><span>${itemName}</span>`
+      : "";
+    slot.classList.toggle("filled", Boolean(itemName));
+    slot.setAttribute("aria-label", itemName ? `${itemName} forged` : "Empty forged item slot");
+  });
 }
 
 function updateForgeVisual() {
   heatFillEl.style.width = `${game.heat}%`;
   progressFillEl.style.width = `${game.progress}%`;
   itemEl.style.width = `${Math.max(42, 42 + game.progress * 1.55)}px`;
-}
+  stageEl.classList.toggle("heat-critical", game.heat < 20);
+  stageEl.classList.toggle("heat-low", game.heat >= 20 && game.heat < 40);
+  stageEl.classList.toggle("heat-mid", game.heat >= 40 && game.heat < 70);
+  stageEl.classList.toggle("heat-high", game.heat >= 70);
+  heatFillEl.classList.toggle("heat-critical", game.heat < 20);
+  heatFillEl.classList.toggle("heat-low", game.heat >= 20 && game.heat < 40);
 
-function triggerForgeEffect(type) {
-  stageEl.classList.remove("forge-strike", "forge-cool");
-  hammerEl.classList.remove("forge-hammer-hit");
-  void stageEl.offsetWidth;
-  stageEl.classList.add(type === "strike" ? "forge-strike" : "forge-cool");
-  if (type === "strike") {
-    hammerEl.classList.add("forge-hammer-hit");
+  for (let level = 1; level <= 5; level++) {
+    stageEl.classList.toggle(`forge-upgrade-${level}`, Math.min(5, game.level) === level);
   }
 }
 
-startButton.addEventListener("click", startGame);
-newProblemButton.addEventListener("click", startProblem);
+function triggerForgeEffect(type) {
+  stageEl.classList.remove("forge-strike", "forge-cool", "forge-complete", "forge-level-up");
+  levelOverlayEl.classList.remove("show", "game-over", "paused");
+  levelOverlayEl.textContent = "LEVEL UP";
+  hammerEl.classList.remove("forge-hammer-hit");
+  void stageEl.offsetWidth;
+  if (type === "strike" || type === "complete" || type === "level") {
+    stageEl.classList.add(type === "level" ? "forge-level-up" : type === "complete" ? "forge-complete" : "forge-strike");
+    hammerEl.classList.add("forge-hammer-hit");
+    if (type === "level") {
+      levelOverlayEl.classList.add("show");
+    }
+  } else {
+    stageEl.classList.add("forge-cool");
+  }
+}
+
+startButton.addEventListener("click", () => {
+  if (!game.running || game.gameOver) {
+    startGame();
+    return;
+  }
+
+  if (game.paused) {
+    resumeGame();
+  } else {
+    pauseGame();
+  }
+});
 
 updateHud();
+updateRunButtonState();
 updateForgeVisual();
+requestAnimationFrame(runHeatLoop);

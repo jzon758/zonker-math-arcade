@@ -25,14 +25,16 @@
 
         <div class="forge-hud">
           <div class="pill"><span>Score</span><strong id="forgeScore">0</strong></div>
+          <div class="pill"><span>Level</span><strong id="forgeLevel">1</strong></div>
+          <div class="pill"><span>Items</span><strong id="forgeItems">0</strong></div>
           <div class="pill"><span>Combo</span><strong id="forgeCombo">0</strong></div>
           <div class="pill"><span>High Score</span><strong id="forgeHighScore">0</strong></div>
-          <div class="pill"><span>Items</span><strong id="forgeItems">0</strong></div>
         </div>
       </div>
 
       <div class="forge-layout">
         <section class="forge-work-panel">
+          <div id="forgePauseOverlay" class="forge-pause-overlay" aria-hidden="true">PAUSED</div>
           <div class="forge-expression-card">
             <span>Fraction Problem</span>
             <strong id="forgeExpression">Press Start</strong>
@@ -45,7 +47,6 @@
 
           <div class="forge-actions">
             <button id="forgeStartButton" class="primary-button" type="button">Start Forging</button>
-            <button id="forgeNewProblemButton" class="secondary-button" type="button">New Problem</button>
           </div>
         </section>
 
@@ -57,7 +58,15 @@
             </div>
           </div>
 
+          <div class="forged-slots forge-scene-slots" aria-label="Forged items this level">
+            <div class="forged-slot"></div>
+            <div class="forged-slot"></div>
+            <div class="forged-slot"></div>
+            <div class="forged-slot"></div>
+          </div>
+
           <div class="forge-stage" id="forgeStage">
+            <div id="forgeLevelOverlay" class="forge-level-overlay" aria-hidden="true">LEVEL UP</div>
             <div class="forge-glow"></div>
             <div class="forge-sparks" aria-hidden="true">
               <span></span><span></span><span></span><span></span>
@@ -73,6 +82,7 @@
               <div id="forgeProgressFill" class="forge-progress-fill"></div>
             </div>
           </div>
+
         </section>
       </div>
     </section>
